@@ -1,0 +1,85 @@
+name: Build Jiagu Tool
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # -------------------------
+      # 1. Checkout repo
+      # -------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # -------------------------
+      # 2. Setup JDK (AGP 8.x requires JDK 17)
+      # -------------------------
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # -------------------------
+      # 3. Setup Gradle
+      # -------------------------
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      # -------------------------
+      # 4. Give execution permission
+      # -------------------------
+      - name: Grant execute permissions
+        run: chmod +x ./gradlew
+
+      # -------------------------
+      # 5. Build all modules
+      # -------------------------
+      - name: Build project
+        run: ./gradlew clean assembleRelease
+
+      # -------------------------
+      # 6. Build pack.jar (shadow/fat jar)
+      # -------------------------
+      - name: Build pack.jar
+        run: ./gradlew :pack:jar
+
+      # -------------------------
+      # 7. Collect JiaguTool output
+      # -------------------------
+      - name: Prepare JiaguTool package
+        run: |
+          mkdir -p JiaguTool
+          cp -r JiaguTool/* JiaguTool/ 2>/dev/null || true
+          cp pack/build/libs/*.jar JiaguTool/pack.jar
+          cp -r keystore JiaguTool/
+          cp -r bin JiaguTool/
+          cp -r input JiaguTool/
+          
+          # Remove intermediate files
+          rm -f JiaguTool/*_unsigned.apk || true
+          rm -f JiaguTool/*_v1.apk || true
+          rm -f JiaguTool/*_align.apk || true
+
+      # -------------------------
+      # 8. ZIP JiaguTool folder
+      # -------------------------
+      - name: Create JiaguTool.zip
+        run: zip -r JiaguTool.zip JiaguTool/
+
+      # -------------------------
+      # 9. Upload Artifact
+      # -------------------------
+      - name: Upload JiaguTool artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: JiaguTool
+          path: JiaguTool.zip
+          retention-days: 30
