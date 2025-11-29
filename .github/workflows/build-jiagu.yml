@@ -1,4 +1,4 @@
-name: Build Jiagu Tool
+name: Build Jiagu Tool (Linux + Windows)
 
 on:
   push:
@@ -9,17 +9,30 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
 
     steps:
       # -------------------------
-      # 1. Checkout repo
+      # 1. Checkout repository
       # -------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # -------------------------
-      # 2. Setup JDK (AGP 8.x requires JDK 17)
+      # 2. Install CMake (Linux only)
+      # -------------------------
+      - name: Install CMake (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y cmake
+
+      # -------------------------
+      # 3. Setup JDK 17
       # -------------------------
       - name: Setup JDK 17
         uses: actions/setup-java@v4
@@ -28,58 +41,59 @@ jobs:
           java-version: '17'
 
       # -------------------------
-      # 3. Setup Gradle
+      # 4. Setup Gradle
       # -------------------------
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
       # -------------------------
-      # 4. Give execution permission
+      # 5. Make Gradle executable (Linux only)
       # -------------------------
-      - name: Grant execute permissions
+      - name: Make gradlew executable
+        if: matrix.os == 'ubuntu-latest'
         run: chmod +x ./gradlew
 
       # -------------------------
-      # 5. Build all modules
+      # 6. Build the entire Android project
       # -------------------------
-      - name: Build project
-        run: ./gradlew clean assembleRelease
+      - name: Build Android modules
+        run: ./gradlew clean assembleRelease --no-daemon
 
       # -------------------------
-      # 6. Build pack.jar (shadow/fat jar)
+      # 7. Build pack.jar
       # -------------------------
       - name: Build pack.jar
-        run: ./gradlew :pack:jar
+        run: ./gradlew :pack:jar --no-daemon
 
       # -------------------------
-      # 7. Collect JiaguTool output
+      # 8. Prepare JiaguTool output
       # -------------------------
       - name: Prepare JiaguTool package
         run: |
+          rm -rf JiaguTool
           mkdir -p JiaguTool
-          cp -r JiaguTool/* JiaguTool/ 2>/dev/null || true
-          cp pack/build/libs/*.jar JiaguTool/pack.jar
-          cp -r keystore JiaguTool/
-          cp -r bin JiaguTool/
-          cp -r input JiaguTool/
-          
-          # Remove intermediate files
-          rm -f JiaguTool/*_unsigned.apk || true
-          rm -f JiaguTool/*_v1.apk || true
-          rm -f JiaguTool/*_align.apk || true
+
+          # Copy bin, keystore, input
+          cp -r bin JiaguTool/ || xcopy bin JiaguTool\\bin /E /I /Y
+          cp -r keystore JiaguTool/ || xcopy keystore JiaguTool\\keystore /E /I /Y
+          cp -r input JiaguTool/ || xcopy input JiaguTool\\input /E /I /Y
+
+          # Copy pack.jar
+          cp pack/build/libs/*.jar JiaguTool/pack.jar || copy pack\\build\\libs\\*.jar JiaguTool\\pack.jar
 
       # -------------------------
-      # 8. ZIP JiaguTool folder
+      # 9. Create ZIP
       # -------------------------
-      - name: Create JiaguTool.zip
-        run: zip -r JiaguTool.zip JiaguTool/
+      - name: ZIP JiaguTool
+        run: |
+          zip -r JiaguTool-${{ matrix.os }}.zip JiaguTool/ || powershell Compress-Archive -Path JiaguTool -DestinationPath JiaguTool-${{ matrix.os }}.zip
 
       # -------------------------
-      # 9. Upload Artifact
+      # 10. Upload artifacts
       # -------------------------
       - name: Upload JiaguTool artifact
         uses: actions/upload-artifact@v4
         with:
-          name: JiaguTool
-          path: JiaguTool.zip
+          name: JiaguTool-${{ matrix.os }}
+          path: JiaguTool-${{ matrix.os }}.zip
           retention-days: 30
