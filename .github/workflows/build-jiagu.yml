@@ -1,0 +1,101 @@
+name: Build & Release JiaguTool (Windows)
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      # --------------------------
+      # CHECKOUT
+      # --------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # --------------------------
+      # GRADLE CACHE (70% speedup)
+      # --------------------------
+      - name: Setup Gradle Cache
+        uses: gradle/actions/setup-gradle@v3
+
+      # --------------------------
+      # JDK 17 FOR AGP 8+
+      # --------------------------
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      # --------------------------
+      # Install Android SDK CMake
+      # --------------------------
+      - name: Install Android SDK CMake
+        shell: pwsh
+        run: |
+          & "${env:ANDROID_HOME}\cmdline-tools\latest\bin\sdkmanager.bat" "cmake;3.22.1" --sdk_root="${env:ANDROID_HOME}"
+
+      # --------------------------
+      # Build full Android project
+      # --------------------------
+      - name: Build Android project
+        run: ./gradlew clean assembleRelease --no-daemon
+
+      # --------------------------
+      # Build pack.jar
+      # --------------------------
+      - name: Build pack.jar
+        run: ./gradlew :pack:jar --no-daemon
+
+      # --------------------------
+      # Package JiaguTool
+      # --------------------------
+      - name: Prepare JiaguTool
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force JiaguTool -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path JiaguTool | Out-Null
+
+          Copy-Item -Recurse bin JiaguTool/bin
+          Copy-Item -Recurse keystore JiaguTool/keystore
+          Copy-Item -Recurse input JiaguTool/input
+          Copy-Item pack/build/libs/*.jar JiaguTool/pack.jar
+
+      # --------------------------
+      # Create release ZIP & SHA256 checksum
+      # --------------------------
+      - name: Create JiaguTool.zip
+        shell: pwsh
+        run: |
+          Compress-Archive -Path JiaguTool -DestinationPath JiaguTool-windows.zip -Force
+          Get-FileHash JiaguTool-windows.zip -Algorithm SHA256 | Out-File JiaguTool-windows.zip.sha256
+
+      # --------------------------
+      # Upload Artifact for CI
+      # --------------------------
+      - name: Upload JiaguTool artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: JiaguTool-windows
+          path: |
+            JiaguTool-windows.zip
+            JiaguTool-windows.zip.sha256
+          retention-days: 30
+
+      # --------------------------
+      # Publish GitHub Release (triggered on tag)
+      # --------------------------
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            JiaguTool-windows.zip
+            JiaguTool-windows.zip.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
