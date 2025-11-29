@@ -1,4 +1,4 @@
-name: Build Jiagu Tool (Linux + Windows)
+name: Build Jiagu Tool (Windows)
 
 on:
   push:
@@ -9,30 +9,17 @@ on:
 
 jobs:
   build:
-    name: Build on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
+    runs-on: windows-latest
 
     steps:
       # -------------------------
-      # 1. Checkout repository
+      # 1. Checkout Repo
       # -------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # -------------------------
-      # 2. Install CMake (Linux only)
-      # -------------------------
-      - name: Install CMake (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install -y cmake
-
-      # -------------------------
-      # 3. Setup JDK 17
+      # 2. Setup JDK 17 (AGP 8.x requirement)
       # -------------------------
       - name: Setup JDK 17
         uses: actions/setup-java@v4
@@ -41,59 +28,53 @@ jobs:
           java-version: '17'
 
       # -------------------------
-      # 4. Setup Gradle
+      # 3. Setup Gradle
       # -------------------------
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
       # -------------------------
-      # 5. Make Gradle executable (Linux only)
+      # 4. Build Android project
       # -------------------------
-      - name: Make gradlew executable
-        if: matrix.os == 'ubuntu-latest'
-        run: chmod +x ./gradlew
-
-      # -------------------------
-      # 6. Build the entire Android project
-      # -------------------------
-      - name: Build Android modules
+      - name: Build project
         run: ./gradlew clean assembleRelease --no-daemon
 
       # -------------------------
-      # 7. Build pack.jar
+      # 5. Build pack.jar
       # -------------------------
       - name: Build pack.jar
         run: ./gradlew :pack:jar --no-daemon
 
       # -------------------------
-      # 8. Prepare JiaguTool output
+      # 6. Prepare JiaguTool folder
       # -------------------------
-      - name: Prepare JiaguTool package
+      - name: Prepare JiaguTool
+        shell: pwsh
         run: |
-          rm -rf JiaguTool
-          mkdir -p JiaguTool
+          Remove-Item -Recurse -Force JiaguTool -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path JiaguTool | Out-Null
 
-          # Copy bin, keystore, input
-          cp -r bin JiaguTool/ || xcopy bin JiaguTool\\bin /E /I /Y
-          cp -r keystore JiaguTool/ || xcopy keystore JiaguTool\\keystore /E /I /Y
-          cp -r input JiaguTool/ || xcopy input JiaguTool\\input /E /I /Y
+          # Copy tool folders
+          Copy-Item -Recurse bin JiaguTool/bin
+          Copy-Item -Recurse keystore JiaguTool/keystore
+          Copy-Item -Recurse input JiaguTool/input
 
-          # Copy pack.jar
-          cp pack/build/libs/*.jar JiaguTool/pack.jar || copy pack\\build\\libs\\*.jar JiaguTool\\pack.jar
-
-      # -------------------------
-      # 9. Create ZIP
-      # -------------------------
-      - name: ZIP JiaguTool
-        run: |
-          zip -r JiaguTool-${{ matrix.os }}.zip JiaguTool/ || powershell Compress-Archive -Path JiaguTool -DestinationPath JiaguTool-${{ matrix.os }}.zip
+          # Copy generated pack.jar
+          Copy-Item pack/build/libs/*.jar JiaguTool/pack.jar
 
       # -------------------------
-      # 10. Upload artifacts
+      # 7. Create ZIP package
+      # -------------------------
+      - name: Create JiaguTool.zip
+        shell: pwsh
+        run: Compress-Archive -Path JiaguTool -DestinationPath JiaguTool-windows.zip -Force
+
+      # -------------------------
+      # 8. Upload artifact
       # -------------------------
       - name: Upload JiaguTool artifact
         uses: actions/upload-artifact@v4
         with:
-          name: JiaguTool-${{ matrix.os }}
-          path: JiaguTool-${{ matrix.os }}.zip
+          name: JiaguTool-windows
+          path: JiaguTool-windows.zip
           retention-days: 30
