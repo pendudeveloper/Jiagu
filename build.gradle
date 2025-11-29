@@ -6,6 +6,7 @@ buildscript {
     }
     dependencies {
         classpath "com.android.tools.build:gradle:8.11.0"
+        classpath 'com.tencent.mm:AndResGuard-gradle-plugin:1.2.21'
     }
 }
 
