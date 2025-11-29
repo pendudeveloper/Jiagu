@@ -1,3 +1,4 @@
+include ':pack'
+include ':jiagu'
+include ':app'
 rootProject.name = "Jiagu"
-
-include(":app", ":jiagu", ":pack")
